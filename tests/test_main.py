@@ -1,0 +1,200 @@
+from fastapi.testclient import TestClient
+
+from app.main import app
+
+client = TestClient(app)
+
+
+def test_read_root() -> None:
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert response.json() == {"message": "Hello, World!"}
+
+
+def test_health_check() -> None:
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
+def test_html_to_markdown(monkeypatch) -> None:
+    def fake_convert_html_to_markdown(html: str) -> str:
+        assert html == "<h1>Hello</h1>"
+        return "# Hello"
+
+    monkeypatch.setattr("app.main.convert_html_to_markdown", fake_convert_html_to_markdown)
+
+    response = client.post("/html-to-markdown", json={"html": "<h1>Hello</h1>"})
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/markdown")
+    assert response.text == "# Hello"
+
+
+def test_html_file_to_markdown_with_unicode_filename(monkeypatch) -> None:
+    def fake_convert_html_bytes_to_markdown(html_content: bytes) -> str:
+        assert html_content == b"<h1>Hello</h1>"
+        return "# Hello"
+
+    monkeypatch.setattr(
+        "app.main.convert_html_bytes_to_markdown",
+        fake_convert_html_bytes_to_markdown,
+    )
+
+    response = client.post(
+        "/html-file-to-markdown",
+        files={"file": ("nội_dung.html", b"<h1>Hello</h1>", "text/html")},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/markdown")
+    assert response.headers["content-disposition"] == "attachment; filename*=UTF-8''n%E1%BB%99i_dung.md"
+    assert response.text == "# Hello"
+
+
+def test_file_to_markdown_with_audio_transcript(monkeypatch) -> None:
+    def fake_convert_file_bytes_to_markdown(file_content: bytes, filename: str | None) -> str:
+        assert file_content == b"audio bytes"
+        assert filename == "meeting.mp3"
+        return "### Audio Transcript:\nhello from audio"
+
+    monkeypatch.setattr(
+        "app.main.convert_file_bytes_to_markdown",
+        fake_convert_file_bytes_to_markdown,
+    )
+
+    response = client.post(
+        "/file-to-markdown",
+        files={"file": ("meeting.mp3", b"audio bytes", "audio/mpeg")},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/markdown")
+    assert response.headers["content-disposition"] == 'attachment; filename="meeting.md"'
+    assert response.text == "### Audio Transcript:\nhello from audio"
+
+
+def test_convert_audio_uses_moonshine_transcription(monkeypatch) -> None:
+    def fake_transcribe_media(media_content: bytes, file_extension: str | None) -> str:
+        assert media_content == b"audio bytes"
+        assert file_extension == ".mp3"
+        return "hello from moonshine"
+
+    monkeypatch.setattr("app.main.transcribe_media", fake_transcribe_media)
+
+    from app.main import convert_file_bytes_to_markdown
+
+    assert convert_file_bytes_to_markdown(b"audio bytes", "meeting.mp3") == (
+        "### Audio/Video Transcript\n\nhello from moonshine"
+    )
+
+
+def test_html_with_embedded_audio_transcript(monkeypatch) -> None:
+    def fake_convert_bytes_to_markdown(file_content: bytes, file_extension: str | None) -> str:
+        assert file_extension == ".html"
+        assert file_content == (
+            b'<html><audio src="data:audio/wav;base64,YXVkaW8gYnl0ZXM="></audio>'
+            b'<section class="media-transcript"><h3>Audio/Video Transcript</h3>'
+            b"<p>embedded hello</p></section></html>"
+        )
+        return "# Page\n\n### Audio/Video Transcript\n\nembedded hello"
+
+    def fake_transcribe_media(media_content: bytes, file_extension: str | None) -> str:
+        assert media_content == b"audio bytes"
+        assert file_extension == ".wav"
+        return "embedded hello"
+
+    monkeypatch.setattr("app.main.convert_bytes_to_markdown", fake_convert_bytes_to_markdown)
+    monkeypatch.setattr("app.main.transcribe_media", fake_transcribe_media)
+
+    from app.main import convert_html_bytes_to_markdown
+
+    html = b'<html><audio src="data:audio/wav;base64,YXVkaW8gYnl0ZXM="></audio></html>'
+
+    assert convert_html_bytes_to_markdown(html) == (
+        "# Page\n\n### Audio/Video Transcript\n\nembedded hello"
+    )
+
+
+def test_html_with_audio_url_transcript(monkeypatch) -> None:
+    def fake_convert_bytes_to_markdown(file_content: bytes, file_extension: str | None) -> str:
+        assert file_extension == ".html"
+        assert file_content == (
+            b'<html><audio src="https://example.com/audio.mp3"></audio>'
+            b'<section class="media-transcript"><h3>Audio/Video Transcript</h3>'
+            b"<p>url audio hello</p></section></html>"
+        )
+        return "# Page\n\n### Audio/Video Transcript\n\nurl audio hello"
+
+    def fake_download_media_url(url: str) -> tuple[bytes, str | None]:
+        assert url == "https://example.com/audio.mp3"
+        return b"audio bytes", ".mp3"
+
+    def fake_transcribe_media(media_content: bytes, file_extension: str | None) -> str:
+        assert media_content == b"audio bytes"
+        assert file_extension == ".mp3"
+        return "url audio hello"
+
+    monkeypatch.setattr("app.main.convert_bytes_to_markdown", fake_convert_bytes_to_markdown)
+    monkeypatch.setattr("app.main.download_media_url", fake_download_media_url)
+    monkeypatch.setattr("app.main.transcribe_media", fake_transcribe_media)
+
+    from app.main import convert_html_bytes_to_markdown
+
+    html = b'<html><audio src="https://example.com/audio.mp3"></audio></html>'
+
+    assert convert_html_bytes_to_markdown(html) == (
+        "# Page\n\n### Audio/Video Transcript\n\nurl audio hello"
+    )
+
+
+def test_download_media_url_uses_certifi_ssl_context(monkeypatch) -> None:
+    class FakeResponse:
+        headers = {"content-type": "audio/mpeg", "content-length": "11"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return None
+
+        def read(self, size: int) -> bytes:
+            if not hasattr(self, "already_read"):
+                self.already_read = True
+                return b"audio bytes"
+            return b""
+
+    def fake_urlopen(request, timeout: float, context):
+        assert request.full_url == "https://example.com/audio.mp3"
+        assert timeout == 60
+        assert context is not None
+        return FakeResponse()
+
+    monkeypatch.setattr("app.main.urlopen", fake_urlopen)
+
+    from app.main import download_media_url
+
+    assert download_media_url("https://example.com/audio.mp3") == (b"audio bytes", ".mp3")
+
+
+def test_html_file_to_markdown(monkeypatch) -> None:
+    def fake_convert_html_bytes_to_markdown(html_content: bytes) -> str:
+        assert html_content == b"<h1>Hello</h1>"
+        return "# Hello"
+
+    monkeypatch.setattr(
+        "app.main.convert_html_bytes_to_markdown",
+        fake_convert_html_bytes_to_markdown,
+    )
+
+    response = client.post(
+        "/html-file-to-markdown",
+        files={"file": ("hello.html", b"<h1>Hello</h1>", "text/html")},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/markdown")
+    assert response.headers["content-disposition"] == 'attachment; filename="hello.md"'
+    assert response.text == "# Hello"

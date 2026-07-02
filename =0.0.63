@@ -1,0 +1,24 @@
+Collecting moonshine-voice
+  Using cached moonshine_voice-0.0.63-py3-none-macosx_15_0_arm64.whl.metadata (8.2 kB)
+Requirement already satisfied: numpy in /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages (from moonshine-voice) (2.4.3)
+Collecting sounddevice (from moonshine-voice)
+  Downloading sounddevice-0.5.5-py3-none-macosx_10_6_x86_64.macosx_10_6_universal2.whl.metadata (1.4 kB)
+Requirement already satisfied: requests in /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages (from moonshine-voice) (2.33.0)
+Requirement already satisfied: tqdm in /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages (from moonshine-voice) (4.67.3)
+Collecting filelock (from moonshine-voice)
+  Downloading filelock-3.29.4-py3-none-any.whl.metadata (2.0 kB)
+Collecting platformdirs (from moonshine-voice)
+  Downloading platformdirs-4.10.0-py3-none-any.whl.metadata (5.5 kB)
+Requirement already satisfied: charset_normalizer<4,>=2 in /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages (from requests->moonshine-voice) (3.4.6)
+Requirement already satisfied: idna<4,>=2.5 in /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages (from requests->moonshine-voice) (3.11)
+Requirement already satisfied: urllib3<3,>=1.26 in /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages (from requests->moonshine-voice) (2.6.3)
+Requirement already satisfied: certifi>=2023.5.7 in /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages (from requests->moonshine-voice) (2026.2.25)
+Requirement already satisfied: cffi in /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages (from sounddevice->moonshine-voice) (2.0.0)
+Requirement already satisfied: pycparser in /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages (from cffi->sounddevice->moonshine-voice) (3.0)
+Using cached moonshine_voice-0.0.63-py3-none-macosx_15_0_arm64.whl (83.2 MB)
+Downloading filelock-3.29.4-py3-none-any.whl (42 kB)
+Downloading platformdirs-4.10.0-py3-none-any.whl (22 kB)
+Downloading sounddevice-0.5.5-py3-none-macosx_10_6_x86_64.macosx_10_6_universal2.whl (108 kB)
+Installing collected packages: platformdirs, filelock, sounddevice, moonshine-voice
+
+Successfully installed filelock-3.29.4 moonshine-voice-0.0.63 platformdirs-4.10.0 sounddevice-0.5.5
