@@ -56,6 +56,26 @@ curl -X POST http://127.0.0.1:8000/file-to-markdown \
 
 Luu y: transcription audio/video dung `moonshine-voice` va can co `ffmpeg` tren may chay server de tach/chuan hoa audio tu video, MP3, MP4, M4A. Mac dinh service dung model `tiny-en` vi goi `moonshine-voice` hien chi dong goi san model nay; co the doi bang bien moi truong `MOONSHINE_MODEL_NAME` va `MOONSHINE_MODEL_ARCH` neu server da co model tuong ung. Media URL trong HTML chi ho tro `http/https`, gioi han tai mac dinh 50MB (`MEDIA_DOWNLOAD_MAX_BYTES`) va timeout mac dinh 60 giay (`MEDIA_DOWNLOAD_TIMEOUT_SECONDS`). Service dung CA bundle tu `certifi` khi tai media URL HTTPS de tranh loi SSL local thieu certificate.
 
+## Deploy len Vercel
+
+Du an da co cau hinh Vercel:
+
+- `api/index.py` export FastAPI app cho Vercel Python runtime.
+- `vercel.json` route tat ca request ve `api/index.py`.
+- `requirements.txt` khai bao dependencies de Vercel cai dat.
+
+Cach deploy:
+
+```bash
+vercel
+```
+
+Hoac deploy production:
+
+```bash
+vercel --prod
+```
+
 ## Chay test
 
 ```bash
