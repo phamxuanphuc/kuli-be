@@ -1,5 +1,7 @@
 import base64
+import logging
 import os
+import time
 import re
 import ssl
 import subprocess
@@ -8,14 +10,32 @@ from html import escape
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import quote, urlparse
-from urllib.request import Request, urlopen
+from urllib.request import Request as UrllibRequest, urlopen
 
 import certifi
-from fastapi import FastAPI, File, Response, UploadFile
+from fastapi import FastAPI, File, Request, Response, UploadFile
 from markitdown import MarkItDown
 from pydantic import BaseModel
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("api")
+
 app = FastAPI(title="Python REST API")
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    duration_ms = (time.perf_counter() - start) * 1000
+    logger.info(
+        "%s %s -> %s (%.1fms)",
+        request.method,
+        request.url.path,
+        response.status_code,
+        duration_ms,
+    )
+    return response
 markitdown = MarkItDown()
 MEDIA_DOWNLOAD_MAX_BYTES = int(os.getenv("MEDIA_DOWNLOAD_MAX_BYTES", str(150 * 1024 * 1024)))
 MEDIA_DOWNLOAD_TIMEOUT_SECONDS = float(os.getenv("MEDIA_DOWNLOAD_TIMEOUT_SECONDS", "60"))
@@ -128,7 +148,7 @@ def get_media_url_match(media_html: str) -> re.Match[str] | None:
 
 
 def download_media_url(url: str) -> tuple[bytes, str | None]:
-    request = Request(url, headers={"User-Agent": "kuli-be/1.0"})
+    request = UrllibRequest(url, headers={"User-Agent": "kuli-be/1.0"})
     ssl_context = ssl.create_default_context(cafile=certifi.where())
     with urlopen(request, timeout=MEDIA_DOWNLOAD_TIMEOUT_SECONDS, context=ssl_context) as response:
         content_type = validate_media_url_response(response.headers.get("content-type", ""))
@@ -149,7 +169,7 @@ def download_media_url(url: str) -> tuple[bytes, str | None]:
 
 
 def download_media_url_to_file(url: str) -> tuple[str, str | None]:
-    request = Request(url, headers={"User-Agent": "kuli-be/1.0"})
+    request = UrllibRequest(url, headers={"User-Agent": "kuli-be/1.0"})
     ssl_context = ssl.create_default_context(cafile=certifi.where())
     with urlopen(request, timeout=MEDIA_DOWNLOAD_TIMEOUT_SECONDS, context=ssl_context) as response:
         content_type = validate_media_url_response(response.headers.get("content-type", ""))
