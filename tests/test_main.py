@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app.main import MEDIA_DOWNLOAD_MAX_BYTES, app
 
 client = TestClient(app)
 
@@ -128,18 +128,12 @@ def test_html_with_audio_url_transcript(monkeypatch) -> None:
         )
         return "# Page\n\n### Audio/Video Transcript\n\nurl audio hello"
 
-    def fake_download_media_url(url: str) -> tuple[bytes, str | None]:
+    def fake_transcribe_media_url(url: str) -> str:
         assert url == "https://example.com/audio.mp3"
-        return b"audio bytes", ".mp3"
-
-    def fake_transcribe_media(media_content: bytes, file_extension: str | None) -> str:
-        assert media_content == b"audio bytes"
-        assert file_extension == ".mp3"
         return "url audio hello"
 
     monkeypatch.setattr("app.main.convert_bytes_to_markdown", fake_convert_bytes_to_markdown)
-    monkeypatch.setattr("app.main.download_media_url", fake_download_media_url)
-    monkeypatch.setattr("app.main.transcribe_media", fake_transcribe_media)
+    monkeypatch.setattr("app.main.transcribe_media_url", fake_transcribe_media_url)
 
     from app.main import convert_html_bytes_to_markdown
 
@@ -148,6 +142,66 @@ def test_html_with_audio_url_transcript(monkeypatch) -> None:
     assert convert_html_bytes_to_markdown(html) == (
         "# Page\n\n### Audio/Video Transcript\n\nurl audio hello"
     )
+
+
+def test_default_media_download_limit_supports_110mb_audio_url() -> None:
+    assert MEDIA_DOWNLOAD_MAX_BYTES == 150 * 1024 * 1024
+
+
+
+def test_html_with_duplicate_audio_url_transcribes_once(monkeypatch) -> None:
+    def fake_convert_bytes_to_markdown(file_content: bytes, file_extension: str | None) -> str:
+        assert file_extension == ".html"
+        assert file_content == (
+            b'<html><audio src="https://example.com/audio.mp3"></audio>'
+            b'<section class="media-transcript"><h3>Audio/Video Transcript</h3>'
+            b"<p>cached hello</p></section>"
+            b'<audio src="https://example.com/audio.mp3"></audio>'
+            b'<section class="media-transcript"><h3>Audio/Video Transcript</h3>'
+            b"<p>cached hello</p></section></html>"
+        )
+        return "# Page"
+
+    calls = []
+
+    def fake_transcribe_media_url(url: str) -> str:
+        calls.append(url)
+        return "cached hello"
+
+    monkeypatch.setattr("app.main.convert_bytes_to_markdown", fake_convert_bytes_to_markdown)
+    monkeypatch.setattr("app.main.transcribe_media_url", fake_transcribe_media_url)
+
+    from app.main import convert_html_bytes_to_markdown
+
+    html = (
+        b'<html><audio src="https://example.com/audio.mp3"></audio>'
+        b'<audio src="https://example.com/audio.mp3"></audio></html>'
+    )
+
+    assert convert_html_bytes_to_markdown(html) == "# Page"
+    assert calls == ["https://example.com/audio.mp3"]
+
+
+
+def test_html_with_too_large_audio_url_keeps_media_without_transcript(monkeypatch) -> None:
+    def fake_convert_bytes_to_markdown(file_content: bytes, file_extension: str | None) -> str:
+        assert file_extension == ".html"
+        assert file_content == b'<html><audio src="https://example.com/large.mp3"></audio></html>'
+        return "# Page"
+
+    def fake_transcribe_media_url(url: str) -> str:
+        assert url == "https://example.com/large.mp3"
+        raise RuntimeError("Media URL is larger than the configured download limit.")
+
+    monkeypatch.setattr("app.main.convert_bytes_to_markdown", fake_convert_bytes_to_markdown)
+    monkeypatch.setattr("app.main.transcribe_media_url", fake_transcribe_media_url)
+
+    from app.main import convert_html_bytes_to_markdown
+
+    html = b'<html><audio src="https://example.com/large.mp3"></audio></html>'
+
+    assert convert_html_bytes_to_markdown(html) == "# Page"
+
 
 
 def test_download_media_url_uses_certifi_ssl_context(monkeypatch) -> None:

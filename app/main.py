@@ -17,7 +17,7 @@ from pydantic import BaseModel
 
 app = FastAPI(title="Python REST API")
 markitdown = MarkItDown()
-MEDIA_DOWNLOAD_MAX_BYTES = int(os.getenv("MEDIA_DOWNLOAD_MAX_BYTES", str(50 * 1024 * 1024)))
+MEDIA_DOWNLOAD_MAX_BYTES = int(os.getenv("MEDIA_DOWNLOAD_MAX_BYTES", str(150 * 1024 * 1024)))
 MEDIA_DOWNLOAD_TIMEOUT_SECONDS = float(os.getenv("MEDIA_DOWNLOAD_TIMEOUT_SECONDS", "60"))
 
 
@@ -71,13 +71,16 @@ def convert_bytes_to_markdown(file_content: bytes, file_extension: str | None) -
 
 def insert_embedded_media_transcripts(html_content: bytes) -> str:
     html = html_content.decode("utf-8", errors="ignore")
+    url_transcripts: dict[str, str] = {}
 
     def replace_media(match: re.Match[str]) -> str:
         media_html = match.group(0)
-        media_content, file_extension = get_media_content(media_html)
-        if media_content is None:
+        try:
+            transcript = get_media_transcript(media_html, url_transcripts)
+            if not transcript:
+                return media_html
+        except RuntimeError:
             return media_html
-        transcript = transcribe_media(media_content, file_extension)
         return media_html + format_transcript_html(transcript)
 
     return re.sub(
@@ -88,18 +91,24 @@ def insert_embedded_media_transcripts(html_content: bytes) -> str:
     )
 
 
-def get_media_content(media_html: str) -> tuple[bytes | None, str | None]:
+def get_media_transcript(media_html: str, url_transcripts: dict[str, str]) -> str | None:
     data_uri_match = get_media_data_uri_match(media_html)
     if data_uri_match is not None:
         media_type = data_uri_match.group("type").lower()
         media_content = base64.b64decode(data_uri_match.group("data"), validate=True)
-        return media_content, get_media_extension(media_type)
+        return transcribe_media(media_content, get_media_extension(media_type))
 
     url_match = get_media_url_match(media_html)
-    if url_match is not None:
-        return download_media_url(url_match.group("url"))
+    if url_match is None:
+        return None
 
-    return None, None
+    url = url_match.group("url")
+    if url not in url_transcripts:
+        url_transcripts[url] = transcribe_media_url(url)
+    return url_transcripts[url]
+
+
+
 
 
 def get_media_data_uri_match(media_html: str) -> re.Match[str] | None:
@@ -122,13 +131,8 @@ def download_media_url(url: str) -> tuple[bytes, str | None]:
     request = Request(url, headers={"User-Agent": "kuli-be/1.0"})
     ssl_context = ssl.create_default_context(cafile=certifi.where())
     with urlopen(request, timeout=MEDIA_DOWNLOAD_TIMEOUT_SECONDS, context=ssl_context) as response:
-        content_type = response.headers.get("content-type", "").split(";", 1)[0].lower()
-        if not (content_type.startswith("audio/") or content_type.startswith("video/")):
-            raise RuntimeError(f"Unsupported media URL content type: {content_type}")
-
-        content_length = response.headers.get("content-length")
-        if content_length and int(content_length) > MEDIA_DOWNLOAD_MAX_BYTES:
-            raise RuntimeError("Media URL is larger than the configured download limit.")
+        content_type = validate_media_url_response(response.headers.get("content-type", ""))
+        validate_media_content_length(response.headers.get("content-length"))
 
         chunks = []
         total_size = 0
@@ -137,11 +141,53 @@ def download_media_url(url: str) -> tuple[bytes, str | None]:
             if not chunk:
                 break
             total_size += len(chunk)
-            if total_size > MEDIA_DOWNLOAD_MAX_BYTES:
-                raise RuntimeError("Media URL is larger than the configured download limit.")
+            validate_media_download_size(total_size)
             chunks.append(chunk)
 
     return b"".join(chunks), get_media_url_extension(url, content_type)
+
+
+
+def download_media_url_to_file(url: str) -> tuple[str, str | None]:
+    request = Request(url, headers={"User-Agent": "kuli-be/1.0"})
+    ssl_context = ssl.create_default_context(cafile=certifi.where())
+    with urlopen(request, timeout=MEDIA_DOWNLOAD_TIMEOUT_SECONDS, context=ssl_context) as response:
+        content_type = validate_media_url_response(response.headers.get("content-type", ""))
+        validate_media_content_length(response.headers.get("content-length"))
+        file_extension = get_media_url_extension(url, content_type)
+
+        with tempfile.NamedTemporaryFile(suffix=file_extension or ".media", delete=False) as output_file:
+            output_path = output_file.name
+            total_size = 0
+            while True:
+                chunk = response.read(64 * 1024)
+                if not chunk:
+                    break
+                total_size += len(chunk)
+                validate_media_download_size(total_size)
+                output_file.write(chunk)
+
+    return output_path, file_extension
+
+
+
+def validate_media_url_response(content_type_header: str) -> str:
+    content_type = content_type_header.split(";", 1)[0].lower()
+    if not (content_type.startswith("audio/") or content_type.startswith("video/")):
+        raise RuntimeError(f"Unsupported media URL content type: {content_type}")
+    return content_type
+
+
+
+def validate_media_content_length(content_length: str | None) -> None:
+    if content_length and int(content_length) > MEDIA_DOWNLOAD_MAX_BYTES:
+        raise RuntimeError("Media URL is larger than the configured download limit.")
+
+
+
+def validate_media_download_size(total_size: int) -> None:
+    if total_size > MEDIA_DOWNLOAD_MAX_BYTES:
+        raise RuntimeError("Media URL is larger than the configured download limit.")
 
 
 def get_media_url_extension(url: str, content_type: str) -> str | None:
@@ -174,6 +220,21 @@ def transcribe_media_to_markdown(media_content: bytes, file_extension: str | Non
 
 def transcribe_media(media_content: bytes, file_extension: str | None) -> str:
     wav_path = convert_media_to_wav(media_content, file_extension)
+    return transcribe_media_file(wav_path)
+
+
+
+def transcribe_media_url(url: str) -> str:
+    input_path, file_extension = download_media_url_to_file(url)
+    try:
+        wav_path = convert_media_file_to_wav(input_path, file_extension)
+        return transcribe_media_file(wav_path)
+    finally:
+        Path(input_path).unlink(missing_ok=True)
+
+
+
+def transcribe_media_file(wav_path: str) -> str:
     try:
         from moonshine_voice.moonshine_api import ModelArch
         from moonshine_voice.transcriber import Transcriber
@@ -190,10 +251,19 @@ def transcribe_media(media_content: bytes, file_extension: str | None) -> str:
         Path(wav_path).unlink(missing_ok=True)
 
 
+
 def convert_media_to_wav(media_content: bytes, file_extension: str | None) -> str:
     with tempfile.NamedTemporaryFile(suffix=file_extension or ".media", delete=False) as input_file:
         input_file.write(media_content)
         input_path = input_file.name
+    try:
+        return convert_media_file_to_wav(input_path, file_extension)
+    finally:
+        Path(input_path).unlink(missing_ok=True)
+
+
+
+def convert_media_file_to_wav(input_path: str, file_extension: str | None) -> str:
     output_path = tempfile.NamedTemporaryFile(suffix=".wav", delete=False).name
     Path(output_path).unlink(missing_ok=True)
     try:
@@ -218,9 +288,6 @@ def convert_media_to_wav(media_content: bytes, file_extension: str | None) -> st
         return output_path
     except FileNotFoundError as exc:
         raise RuntimeError("Audio/video transcription requires ffmpeg.") from exc
-    finally:
-        Path(input_path).unlink(missing_ok=True)
-
 
 def is_audio_video_extension(file_extension: str | None) -> bool:
     return file_extension in {".wav", ".mp3", ".m4a", ".mp4"}
