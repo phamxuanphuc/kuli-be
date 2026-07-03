@@ -222,7 +222,7 @@ def test_download_media_url_uses_certifi_ssl_context(monkeypatch) -> None:
 
     def fake_urlopen(request, timeout: float, context):
         assert request.full_url == "https://example.com/audio.mp3"
-        assert timeout == 60
+        assert timeout == 120
         assert context is not None
         return FakeResponse()
 

@@ -28,7 +28,7 @@ final class ServerController: ObservableObject {
     private var process: Process?
     private var pipe: Pipe?
 
-    func start(port: Int) {
+    func start(port: Int, transcriptWorkers: Int) {
         guard !running else { return }
         let binURL: URL
         if let bundled = Bundle.main.url(forResource: "kuli-server", withExtension: nil, subdirectory: "server") {
@@ -42,11 +42,15 @@ final class ServerController: ObservableObject {
             }
             binURL = dev
         }
-        log = ""
+        log = "Starting server binary at \(binURL.path)\nPort: \(port)\nTranscript workers: \(transcriptWorkers)\n"
         let proc = Process()
         proc.executableURL = binURL
         proc.arguments = [String(port)]
-        proc.environment = ["PYTHONUNBUFFERED": "1"]
+        proc.environment = [
+            "PYTHONUNBUFFERED": "1",
+            "TRANSCRIBE_EXECUTOR": "process",
+            "TRANSCRIBE_MAX_WORKERS": String(transcriptWorkers)
+        ]
 
         let outPipe = Pipe()
         proc.standardOutput = outPipe
@@ -57,18 +61,21 @@ final class ServerController: ObservableObject {
             DispatchQueue.main.async { self?.log += text }
         }
 
-        proc.terminationHandler = { [weak self] _ in
+        proc.terminationHandler = { [weak self] proc in
             DispatchQueue.main.async {
                 self?.running = false
-                self?.status = "Stopped"
+                self?.status = proc.terminationStatus == 0 ? "Stopped" : "Stopped with error code \(proc.terminationStatus)"
+                self?.log += "\nProcess exited with code \(proc.terminationStatus)\n"
             }
         }
         do {
+            log += "Launching process...\n"
             try proc.run()
             process = proc
             pipe = outPipe
             running = true
-            status = "Running at http://127.0.0.1:\(port) (first launch may take ~15s to be ready)"
+            log += "Process started with PID \(proc.processIdentifier). Waiting for FastAPI startup logs...\n"
+            status = "Starting server at http://127.0.0.1:\(port)..."
         } catch {
             status = "Error: \(error.localizedDescription)"
         }
@@ -82,11 +89,26 @@ final class ServerController: ObservableObject {
         running = false
         status = "Stopped"
     }
+
+    func killPort(_ port: Int) {
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        proc.arguments = ["-lc", "pids=$(lsof -ti tcp:\(port)); if [ -n \"$pids\" ]; then kill -9 $pids; else exit 1; fi"]
+
+        do {
+            try proc.run()
+            proc.waitUntilExit()
+            status = proc.terminationStatus == 0 ? "Killed processes on port \(port)" : "No process found on port \(port)"
+        } catch {
+            status = "Error: \(error.localizedDescription)"
+        }
+    }
 }
 
 struct ContentView: View {
     @StateObject private var server = ServerController()
     @AppStorage("port") private var portText = "8000"
+    @AppStorage("transcriptWorkers") private var transcriptWorkersText = "4"
     @State private var installStatus = ""
 
     private func installExtension() {
@@ -128,9 +150,13 @@ struct ContentView: View {
         }
     }
 
+    private var appVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.1"
+    }
+
     var body: some View {
         VStack(spacing: 14) {
-            Text("Kuli Server").font(.title2).bold()
+            Text("Kuli Server v\(appVersion)").font(.title2).bold()
 
             HStack {
                 Text("Port")
@@ -139,16 +165,32 @@ struct ContentView: View {
                     .frame(width: 100)
                     .disabled(server.running)
 
+                Text("Transcript processes")
+                TextField("4", text: $transcriptWorkersText)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 60)
+                    .disabled(server.running)
+
                 Button(server.running ? "Stop" : "Start") {
                     if server.running {
                         server.stop()
-                    } else if let port = Int(portText), (1...65535).contains(port) {
-                        server.start(port: port)
+                    } else if let port = Int(portText), (1...65535).contains(port),
+                              let workers = Int(transcriptWorkersText), (1...32).contains(workers) {
+                        server.start(port: port, transcriptWorkers: workers)
+                    } else {
+                        server.status = "Error: invalid port or transcript processes"
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button("Kill Port") {
+                    if let port = Int(portText), (1...65535).contains(port) {
+                        server.killPort(port)
                     } else {
                         server.status = "Error: invalid port"
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .disabled(server.running)
             }
 
             Text(server.status)

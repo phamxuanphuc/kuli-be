@@ -4,6 +4,12 @@ cd "$(dirname "$0")/.."
 
 APP="dist/Kuli.app"
 BIN="dist/kuli-server"   # PyInstaller onedir output
+VERSION_FILE="macapp/VERSION"
+CURRENT_VERSION="$(cat "$VERSION_FILE" 2>/dev/null || echo "0.0.0")"
+IFS=. read -r VERSION_MAJOR VERSION_MINOR VERSION_PATCH <<< "$CURRENT_VERSION"
+VERSION_PATCH=$((VERSION_PATCH + 1))
+APP_VERSION="$VERSION_MAJOR.$VERSION_MINOR.$VERSION_PATCH"
+echo "$APP_VERSION" > "$VERSION_FILE"
 
 if [ ! -d "$BIN" ]; then
   echo "Build the Python server first:"
@@ -32,7 +38,7 @@ cp -R "dist/extensions" "$APP/Contents/Resources/dist/extensions"
 # App icon
 cp macapp/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
-cat > "$APP/Contents/Info.plist" <<'PLIST'
+cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -40,8 +46,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>CFBundleName</key><string>Kuli</string>
   <key>CFBundleDisplayName</key><string>Kuli Server</string>
   <key>CFBundleIdentifier</key><string>com.kuli.server</string>
-  <key>CFBundleVersion</key><string>1.0</string>
-  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>CFBundleVersion</key><string>$APP_VERSION</string>
+  <key>CFBundleShortVersionString</key><string>$APP_VERSION</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleExecutable</key><string>Kuli</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
@@ -54,7 +60,7 @@ PLIST
 # Ad-hoc sign so Gatekeeper on other Macs can run it after right-click > Open
 codesign --force --deep --sign - "$APP" 2>/dev/null || true
 
-echo "Built $APP"
+echo "Built $APP v$APP_VERSION"
 
 # Package into a distributable DMG (drag-to-Applications layout)
 DMG="dist/Kuli.dmg"
