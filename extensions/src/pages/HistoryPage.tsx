@@ -6,7 +6,7 @@ import type { ScanHistoryItem } from '../types'
 export function HistoryPage() {
   const { data: history = [], error, isLoading } = useScanHistory()
   const [selectedHistory, setSelectedHistory] = useState<ScanHistoryItem>()
-  const activeHistory = selectedHistory ?? history[0]
+  const activeHistory = selectedHistory
 
   return (
     <AppLayout title="History">
@@ -30,19 +30,30 @@ export function HistoryPage() {
                 <p className="text-[11px] font-black uppercase tracking-[0.24em] text-black/50">Saved scans</p>
                 <h2 className="mt-1 text-xl font-black uppercase leading-none tracking-[-0.04em]">History list</h2>
               </div>
-              <div className="grid max-h-72 gap-2 overflow-auto pr-1">
-                {history.map((item) => (
-                  <HistoryListItem
-                    item={item}
-                    isActive={activeHistory?.id === item.id}
-                    key={item.id}
-                    onSelect={() => setSelectedHistory(item)}
-                  />
-                ))}
+              <div className="max-h-72 overflow-auto border border-black/20">
+                <table className="w-full border-collapse text-left">
+                  <thead className="sticky top-0 bg-white">
+                    <tr className="border-b border-black text-[10px] font-black uppercase tracking-[0.16em] text-black/45">
+                      <th className="px-2 py-2">Title</th>
+                      <th className="px-2 py-2">Content</th>
+                      <th className="px-2 py-2">Time</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {history.map((item) => (
+                      <HistoryTableRow
+                        item={item}
+                        isActive={activeHistory?.id === item.id}
+                        key={item.id}
+                        onSelect={() => setSelectedHistory(item)}
+                      />
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
 
-            {activeHistory ? <HistoryDetail item={activeHistory} /> : null}
+            {activeHistory ? <HistoryDetail item={activeHistory} /> : <StatusMessage message="Select a history row to view full detail." />}
           </section>
         ) : null}
       </div>
@@ -64,27 +75,24 @@ function StatusMessage({ message, tone = 'default' }: StatusMessageProps) {
   return <p className={className}>{message}</p>
 }
 
-type HistoryListItemProps = {
+type HistoryTableRowProps = {
   item: ScanHistoryItem
   isActive: boolean
   onSelect: () => void
 }
 
-function HistoryListItem({ item, isActive, onSelect }: HistoryListItemProps) {
+function HistoryTableRow({ item, isActive, onSelect }: HistoryTableRowProps) {
   return (
-    <button
-      className={`border p-3 text-left transition hover:-translate-y-0.5 hover:shadow-[3px_3px_0_#111] ${
-        isActive ? 'border-black bg-[#ff3000] text-black' : 'border-black/20 bg-white text-black'
+    <tr
+      className={`cursor-pointer border-b border-black/10 text-xs font-bold last:border-b-0 hover:bg-[#ff3000]/20 ${
+        isActive ? 'bg-[#ff3000] text-black' : 'bg-white text-black'
       }`}
-      type="button"
       onClick={onSelect}
     >
-      <span className="block truncate text-sm font-black uppercase tracking-[-0.02em]">{item.title || 'Untitled page'}</span>
-      <span className="mt-1 block truncate text-[11px] font-bold text-black/60">{item.url}</span>
-      <span className="mt-2 block text-[10px] font-black uppercase tracking-[0.16em] text-black/45">
-        {formatDate(item.created_at)}
-      </span>
-    </button>
+      <td className="max-w-[150px] truncate px-2 py-2">{item.title || 'Untitled page'}</td>
+      <td className="px-2 py-2 text-[11px] text-black/60">{item.markdown ? `${item.markdown.length.toLocaleString()} chars` : 'Scanning'}</td>
+      <td className="whitespace-nowrap px-2 py-2 text-[11px] text-black/60">{formatShortDate(item.created_at)}</td>
+    </tr>
   )
 }
 
@@ -151,4 +159,8 @@ function DetailItem({ label, value }: DetailItemProps) {
 
 function formatDate(value: string) {
   return new Date(value).toLocaleString()
+}
+
+function formatShortDate(value: string) {
+  return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }

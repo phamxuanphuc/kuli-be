@@ -18,7 +18,7 @@ from urllib.parse import quote, urlparse
 from urllib.request import Request as UrllibRequest, urlopen
 
 import certifi
-from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from markitdown import MarkItDown
 from pydantic import BaseModel, Field
 
@@ -82,9 +82,25 @@ def html_to_markdown(request: HtmlToMarkdownRequest) -> Response:
 
 
 @app.post("/html-file-to-markdown", response_class=Response)
-async def html_file_to_markdown(file: UploadFile = File(...)) -> Response:
+async def html_file_to_markdown(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    history_id: int | None = Form(None),
+    url: str | None = Form(None),
+    media_json: str | None = Form(None),
+) -> Response:
     html_content = await file.read()
-    markdown = convert_html_bytes_to_markdown(html_content)
+    markdown = convert_html_bytes_to_markdown_fast(html_content)
+    if history_id is not None:
+        save_converted_html_to_scan_history(
+            history_id,
+            file.filename,
+            url,
+            html_content,
+            markdown,
+            media_json,
+        )
+        background_tasks.add_task(update_scan_history_transcripts, history_id, html_content)
     markdown_filename = get_markdown_filename(file.filename)
     return markdown_response(markdown, markdown_filename)
 
@@ -208,6 +224,35 @@ def get_scan_history_by_id(history_id: int) -> dict:
     return scan_history_row_to_dict(row)
 
 
+def save_converted_html_to_scan_history(
+    history_id: int,
+    filename: str | None,
+    url: str | None,
+    html_content: bytes,
+    markdown: str,
+    media_json: str | None,
+) -> None:
+    updates = ScanHistoryUpdate(
+        title=get_history_title(filename),
+        url=url,
+        html=html_content.decode("utf-8", errors="ignore"),
+        markdown=markdown,
+        media=json.loads(media_json) if media_json else None,
+    )
+    update_scan_history(history_id, updates)
+
+
+def update_scan_history_transcripts(history_id: int, html_content: bytes) -> None:
+    markdown = convert_html_bytes_to_markdown(html_content)
+    update_scan_history(history_id, ScanHistoryUpdate(markdown=markdown))
+
+
+def get_history_title(filename: str | None) -> str | None:
+    if not filename:
+        return None
+    return filename.rsplit(".", 1)[0]
+
+
 def scan_history_row_to_dict(row: sqlite3.Row) -> dict:
     return {
         "id": row["id"],
@@ -238,6 +283,10 @@ def convert_html_to_markdown(html: str) -> str:
 def convert_html_bytes_to_markdown(html_content: bytes) -> str:
     html_with_transcripts = insert_embedded_media_transcripts(html_content)
     return convert_bytes_to_markdown(html_with_transcripts.encode("utf-8"), ".html")
+
+
+def convert_html_bytes_to_markdown_fast(html_content: bytes) -> str:
+    return convert_bytes_to_markdown(html_content, ".html")
 
 
 def convert_file_bytes_to_markdown(file_content: bytes, filename: str | None) -> str:

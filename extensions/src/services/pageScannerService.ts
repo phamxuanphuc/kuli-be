@@ -1,14 +1,18 @@
 import { getKuliBeBaseUrl } from '../lib/config'
+import { createScanHistory } from './scanHistoryService'
 import type { PageSnapshot } from '../types'
 
 const noReceivingEndMessage = 'Receiving end does not exist'
 
-async function convertHtmlToMarkdown(snapshot: PageSnapshot): Promise<string> {
+async function convertHtmlToMarkdown(snapshot: PageSnapshot, historyId: number): Promise<string> {
   const formData = new FormData()
   const filename = `${snapshot.title.trim() || 'index'}.html`.replace(/[\\/:*?"<>|]+/g, '-')
   const file = new File([snapshot.html], filename, { type: 'text/html' })
 
   formData.append('file', file)
+  formData.append('history_id', String(historyId))
+  formData.append('url', snapshot.url)
+  formData.append('media_json', JSON.stringify(snapshot.media))
 
   const response = await fetch(`${getKuliBeBaseUrl()}/html-file-to-markdown`, {
     method: 'POST',
@@ -20,18 +24,6 @@ async function convertHtmlToMarkdown(snapshot: PageSnapshot): Promise<string> {
   }
 
   return response.text()
-}
-
-async function saveScanHistory(snapshot: PageSnapshot): Promise<void> {
-  const response = await fetch(`${getKuliBeBaseUrl()}/scan-history`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(snapshot),
-  })
-
-  if (!response.ok) {
-    throw new Error(`Could not save scan history. Status: ${response.status}`)
-  }
 }
 
 function scanPageInTab(): PageSnapshot {
@@ -111,10 +103,15 @@ export async function getActiveTabSnapshot(): Promise<PageSnapshot> {
 
   if (!tab?.id) throw new Error('No active tab found.')
 
+  const pendingHistory = await createScanHistory({
+    title: tab.title || 'Scanning page',
+    url: tab.url || 'about:blank',
+    html: '',
+    markdown: '',
+    media: [],
+  })
   const snapshot = await requestTabScan(tab.id)
-  const markdown = await convertHtmlToMarkdown(snapshot)
-  const snapshotWithMarkdown = { ...snapshot, markdown }
-  await saveScanHistory(snapshotWithMarkdown)
+  const markdown = await convertHtmlToMarkdown(snapshot, pendingHistory.id)
 
-  return snapshotWithMarkdown
+  return { ...snapshot, markdown }
 }

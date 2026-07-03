@@ -34,13 +34,13 @@ def test_html_to_markdown(monkeypatch) -> None:
 
 
 def test_html_file_to_markdown_with_unicode_filename(monkeypatch) -> None:
-    def fake_convert_html_bytes_to_markdown(html_content: bytes) -> str:
+    def fake_convert_html_bytes_to_markdown_fast(html_content: bytes) -> str:
         assert html_content == b"<h1>Hello</h1>"
         return "# Hello"
 
     monkeypatch.setattr(
-        "app.main.convert_html_bytes_to_markdown",
-        fake_convert_html_bytes_to_markdown,
+        "app.main.convert_html_bytes_to_markdown_fast",
+        fake_convert_html_bytes_to_markdown_fast,
     )
 
     response = client.post(
@@ -234,13 +234,13 @@ def test_download_media_url_uses_certifi_ssl_context(monkeypatch) -> None:
 
 
 def test_html_file_to_markdown(monkeypatch) -> None:
-    def fake_convert_html_bytes_to_markdown(html_content: bytes) -> str:
+    def fake_convert_html_bytes_to_markdown_fast(html_content: bytes) -> str:
         assert html_content == b"<h1>Hello</h1>"
         return "# Hello"
 
     monkeypatch.setattr(
-        "app.main.convert_html_bytes_to_markdown",
-        fake_convert_html_bytes_to_markdown,
+        "app.main.convert_html_bytes_to_markdown_fast",
+        fake_convert_html_bytes_to_markdown_fast,
     )
 
     response = client.post(
@@ -252,6 +252,56 @@ def test_html_file_to_markdown(monkeypatch) -> None:
     assert response.headers["content-type"].startswith("text/markdown")
     assert response.headers["content-disposition"] == 'attachment; filename="hello.md"'
     assert response.text == "# Hello"
+
+
+def test_html_file_to_markdown_updates_existing_scan_history(monkeypatch, tmp_path) -> None:
+    db_path = tmp_path / "scan_history.sqlite3"
+    monkeypatch.setattr("app.main.SCAN_HISTORY_DB_PATH", str(db_path))
+
+    def fake_convert_html_bytes_to_markdown_fast(html_content: bytes) -> str:
+        assert html_content == b"<h1>Hello</h1>"
+        return "# Hello"
+
+    monkeypatch.setattr(
+        "app.main.convert_html_bytes_to_markdown_fast",
+        fake_convert_html_bytes_to_markdown_fast,
+    )
+    monkeypatch.setattr("app.main.update_scan_history_transcripts", lambda history_id, html_content: None)
+
+    create_response = client.post(
+        "/scan-history",
+        json={
+            "title": "Pending",
+            "url": "https://example.com/pending",
+            "html": "",
+            "markdown": "",
+            "media": [],
+        },
+    )
+    history_id = create_response.json()["id"]
+
+    convert_response = client.post(
+        "/html-file-to-markdown",
+        data={
+            "history_id": str(history_id),
+            "url": "https://example.com/final",
+            "media_json": '[{"kind":"image","src":"https://example.com/image.png"}]',
+        },
+        files={"file": ("hello.html", b"<h1>Hello</h1>", "text/html")},
+    )
+
+    assert convert_response.status_code == 200
+    assert convert_response.text == "# Hello"
+
+    history_response = client.get(f"/scan-history/{history_id}")
+
+    assert history_response.status_code == 200
+    history = history_response.json()
+    assert history["title"] == "hello"
+    assert history["url"] == "https://example.com/final"
+    assert history["html"] == "<h1>Hello</h1>"
+    assert history["markdown"] == "# Hello"
+    assert history["media"] == [{"kind": "image", "src": "https://example.com/image.png"}]
 
 
 def test_scan_history_crud(monkeypatch, tmp_path) -> None:
