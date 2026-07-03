@@ -22,6 +22,18 @@ async function convertHtmlToMarkdown(snapshot: PageSnapshot): Promise<string> {
   return response.text()
 }
 
+async function saveScanHistory(snapshot: PageSnapshot): Promise<void> {
+  const response = await fetch(`${getKuliBeBaseUrl()}/scan-history`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(snapshot),
+  })
+
+  if (!response.ok) {
+    throw new Error(`Could not save scan history. Status: ${response.status}`)
+  }
+}
+
 function scanPageInTab(): PageSnapshot {
   function absoluteUrl(value: string | null): string | undefined {
     if (!value) return undefined
@@ -101,6 +113,8 @@ export async function getActiveTabSnapshot(): Promise<PageSnapshot> {
 
   const snapshot = await requestTabScan(tab.id)
   const markdown = await convertHtmlToMarkdown(snapshot)
+  const snapshotWithMarkdown = { ...snapshot, markdown }
+  await saveScanHistory(snapshotWithMarkdown)
 
-  return { ...snapshot, markdown }
+  return snapshotWithMarkdown
 }

@@ -46,11 +46,12 @@ final class ServerController: ObservableObject {
         let proc = Process()
         proc.executableURL = binURL
         proc.arguments = [String(port)]
-        proc.environment = [
-            "PYTHONUNBUFFERED": "1",
-            "TRANSCRIBE_EXECUTOR": "process",
-            "TRANSCRIBE_MAX_WORKERS": String(transcriptWorkers)
-        ]
+        var environment = ProcessInfo.processInfo.environment
+        environment["PYTHONUNBUFFERED"] = "1"
+        environment["TRANSCRIBE_EXECUTOR"] = "process"
+        environment["TRANSCRIBE_MAX_WORKERS"] = String(transcriptWorkers)
+        environment["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:" + (environment["PATH"] ?? "")
+        proc.environment = environment
 
         let outPipe = Pipe()
         proc.standardOutput = outPipe

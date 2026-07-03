@@ -63,7 +63,7 @@ codesign --force --deep --sign - "$APP" 2>/dev/null || true
 echo "Built $APP v$APP_VERSION"
 
 # Package into a distributable DMG (drag-to-Applications layout)
-DMG="dist/Kuli.dmg"
+DMG="dist/Kuli-$APP_VERSION.dmg"
 STAGE="$(mktemp -d)"
 cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"

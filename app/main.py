@@ -1,13 +1,16 @@
 import base64
+import json
 import logging
 import os
 import time
 import re
 import shutil
+import sqlite3
 import ssl
 import subprocess
 import tempfile
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from datetime import datetime, timezone
 from html import escape
 from io import BytesIO
 from pathlib import Path
@@ -15,9 +18,9 @@ from urllib.parse import quote, urlparse
 from urllib.request import Request as UrllibRequest, urlopen
 
 import certifi
-from fastapi import FastAPI, File, Request, Response, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
 from markitdown import MarkItDown
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("api")
@@ -44,10 +47,32 @@ MEDIA_DOWNLOAD_TIMEOUT_SECONDS = float(os.getenv("MEDIA_DOWNLOAD_TIMEOUT_SECONDS
 TRANSCRIBE_MAX_WORKERS = int(os.getenv("TRANSCRIBE_MAX_WORKERS", "4"))
 TRANSCRIBE_EXECUTOR = os.getenv("TRANSCRIBE_EXECUTOR", "process").lower()
 FFMPEG_TIMEOUT_SECONDS = float(os.getenv("FFMPEG_TIMEOUT_SECONDS", "60"))
+SCAN_HISTORY_DB_PATH = os.getenv("SCAN_HISTORY_DB_PATH", "scan_history.sqlite3")
 
 
 class HtmlToMarkdownRequest(BaseModel):
     html: str
+
+
+class ScanHistoryCreate(BaseModel):
+    title: str | None = None
+    url: str
+    html: str | None = None
+    markdown: str
+    media: list[dict] = Field(default_factory=list)
+
+
+class ScanHistoryUpdate(BaseModel):
+    title: str | None = None
+    url: str | None = None
+    html: str | None = None
+    markdown: str | None = None
+    media: list[dict] | None = None
+
+
+@app.on_event("startup")
+def startup() -> None:
+    init_scan_history_db()
 
 
 @app.post("/html-to-markdown", response_class=Response)
@@ -70,6 +95,140 @@ async def file_to_markdown(file: UploadFile = File(...)) -> Response:
     markdown = convert_file_bytes_to_markdown(file_content, file.filename)
     markdown_filename = get_markdown_filename(file.filename)
     return markdown_response(markdown, markdown_filename)
+
+
+@app.post("/scan-history")
+def create_scan_history(history: ScanHistoryCreate) -> dict:
+    created_at = current_timestamp()
+    with get_scan_history_connection() as connection:
+        cursor = connection.execute(
+            """
+            INSERT INTO scan_history (title, url, html, markdown, media_json, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                history.title,
+                history.url,
+                history.html,
+                history.markdown,
+                json.dumps(history.media, ensure_ascii=False),
+                created_at,
+                created_at,
+            ),
+        )
+        connection.commit()
+        return get_scan_history_by_id(cursor.lastrowid)
+
+
+@app.get("/scan-history")
+def list_scan_history() -> list[dict]:
+    with get_scan_history_connection() as connection:
+        rows = connection.execute(
+            "SELECT * FROM scan_history ORDER BY created_at DESC, id DESC"
+        ).fetchall()
+    return [scan_history_row_to_dict(row) for row in rows]
+
+
+@app.get("/scan-history/{history_id}")
+def get_scan_history(history_id: int) -> dict:
+    return get_scan_history_by_id(history_id)
+
+
+@app.put("/scan-history/{history_id}")
+def update_scan_history(history_id: int, history: ScanHistoryUpdate) -> dict:
+    updates = model_dump(history, exclude_unset=True)
+    if not updates:
+        return get_scan_history_by_id(history_id)
+
+    fields = []
+    values = []
+    for name, value in updates.items():
+        column = "media_json" if name == "media" else name
+        fields.append(f"{column} = ?")
+        values.append(json.dumps(value, ensure_ascii=False) if name == "media" else value)
+
+    fields.append("updated_at = ?")
+    values.append(current_timestamp())
+    values.append(history_id)
+
+    with get_scan_history_connection() as connection:
+        cursor = connection.execute(
+            f"UPDATE scan_history SET {', '.join(fields)} WHERE id = ?",
+            values,
+        )
+        connection.commit()
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Scan history not found")
+
+    return get_scan_history_by_id(history_id)
+
+
+@app.delete("/scan-history/{history_id}")
+def delete_scan_history(history_id: int) -> dict[str, bool]:
+    with get_scan_history_connection() as connection:
+        cursor = connection.execute("DELETE FROM scan_history WHERE id = ?", (history_id,))
+        connection.commit()
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Scan history not found")
+    return {"ok": True}
+
+
+def init_scan_history_db() -> None:
+    with get_scan_history_connection(init=False) as connection:
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS scan_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT,
+                url TEXT NOT NULL,
+                html TEXT,
+                markdown TEXT NOT NULL,
+                media_json TEXT NOT NULL DEFAULT '[]',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        connection.commit()
+
+
+def get_scan_history_connection(init: bool = True) -> sqlite3.Connection:
+    if init:
+        init_scan_history_db()
+    connection = sqlite3.connect(SCAN_HISTORY_DB_PATH)
+    connection.row_factory = sqlite3.Row
+    return connection
+
+
+def get_scan_history_by_id(history_id: int) -> dict:
+    with get_scan_history_connection() as connection:
+        row = connection.execute("SELECT * FROM scan_history WHERE id = ?", (history_id,)).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Scan history not found")
+    return scan_history_row_to_dict(row)
+
+
+def scan_history_row_to_dict(row: sqlite3.Row) -> dict:
+    return {
+        "id": row["id"],
+        "title": row["title"],
+        "url": row["url"],
+        "html": row["html"],
+        "markdown": row["markdown"],
+        "media": json.loads(row["media_json"] or "[]"),
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+def current_timestamp() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def model_dump(model: BaseModel, **kwargs) -> dict:
+    if hasattr(model, "model_dump"):
+        return model.model_dump(**kwargs)
+    return model.dict(**kwargs)
 
 
 def convert_html_to_markdown(html: str) -> str:
@@ -319,7 +478,10 @@ def transcribe_media_url(url: str) -> str:
     )
     try:
         if file_extension == ".wav":
-            return transcribe_media_file(input_path)
+            try:
+                return transcribe_media_file(input_path, delete_after=False)
+            except ValueError as exc:
+                logger.warning("transcribe: wav needs PCM conversion (%s)", exc)
         wav_path = convert_media_file_to_wav(input_path, file_extension)
         return transcribe_media_file(wav_path)
     finally:
@@ -327,7 +489,7 @@ def transcribe_media_url(url: str) -> str:
 
 
 
-def transcribe_media_file(wav_path: str) -> str:
+def transcribe_media_file(wav_path: str, delete_after: bool = True) -> str:
     try:
         try:
             from moonshine_voice.moonshine_api import ModelArch
@@ -362,7 +524,8 @@ def transcribe_media_file(wav_path: str) -> str:
         )
         return text
     finally:
-        Path(wav_path).unlink(missing_ok=True)
+        if delete_after:
+            Path(wav_path).unlink(missing_ok=True)
 
 
 
@@ -380,36 +543,71 @@ def convert_media_to_wav(media_content: bytes, file_extension: str | None) -> st
 def convert_media_file_to_wav(input_path: str, file_extension: str | None) -> str:
     output_path = tempfile.NamedTemporaryFile(suffix=".wav", delete=False).name
     Path(output_path).unlink(missing_ok=True)
-    logger.info("transcribe: converting %s -> wav (ffmpeg)", file_extension or "media")
     started = time.perf_counter()
     try:
-        subprocess.run(
-            [
-                get_ffmpeg_executable(),
-                "-y",
-                "-i",
-                input_path,
-                "-ac",
-                "1",
-                "-ar",
-                "16000",
-                "-f",
-                "wav",
-                output_path,
-            ],
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=FFMPEG_TIMEOUT_SECONDS,
-        )
+        if file_extension == ".wav" and shutil.which("afconvert"):
+            convert_wav_with_afconvert(input_path, output_path)
+        else:
+            convert_media_with_ffmpeg(input_path, output_path, file_extension)
         logger.info(
             "transcribe: wav ready (%.1fms)", (time.perf_counter() - started) * 1000
         )
         return output_path
     except FileNotFoundError as exc:
-        raise RuntimeError("Audio/video transcription requires ffmpeg.") from exc
+        raise RuntimeError("Audio/video transcription requires ffmpeg or afconvert.") from exc
     except subprocess.TimeoutExpired as exc:
-        raise RuntimeError("Audio/video conversion timed out.") from exc
+        raise RuntimeError(f"Audio/video conversion timed out after {FFMPEG_TIMEOUT_SECONDS}s.") from exc
+
+
+def convert_wav_with_afconvert(input_path: str, output_path: str) -> None:
+    afconvert_executable = shutil.which("afconvert") or "afconvert"
+    logger.info("transcribe: converting .wav -> wav with %s", afconvert_executable)
+    subprocess.run(
+        [
+            afconvert_executable,
+            input_path,
+            output_path,
+            "-f",
+            "WAVE",
+            "-d",
+            "LEI16@16000",
+            "-c",
+            "1",
+        ],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=FFMPEG_TIMEOUT_SECONDS,
+    )
+
+
+def convert_media_with_ffmpeg(input_path: str, output_path: str, file_extension: str | None) -> None:
+    ffmpeg_executable = get_ffmpeg_executable()
+    logger.info(
+        "transcribe: converting %s -> wav with %s",
+        file_extension or "media",
+        ffmpeg_executable,
+    )
+    subprocess.run(
+        [
+            ffmpeg_executable,
+            "-nostdin",
+            "-y",
+            "-i",
+            input_path,
+            "-ac",
+            "1",
+            "-ar",
+            "16000",
+            "-f",
+            "wav",
+            output_path,
+        ],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=FFMPEG_TIMEOUT_SECONDS,
+    )
 
 
 def get_ffmpeg_executable() -> str:

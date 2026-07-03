@@ -1,11 +1,10 @@
 import { AppLayout } from '../components/AppLayout'
 import { PageSummary } from '../components/PageSummary'
-import { QuestionList } from '../components/QuestionList'
 import { QuizControls } from '../components/QuizControls'
 import { useQuizGenerator } from '../hooks/useQuizGenerator'
 
 export function QuizGeneratorPage() {
-  const { snapshot, questions, error, isScanning, isGenerating, scanPage, generateQuestions } = useQuizGenerator()
+  const { snapshot, error, isScanning, scanPage } = useQuizGenerator()
 
   return (
     <AppLayout title="Quiz">
@@ -18,18 +17,10 @@ export function QuizGeneratorPage() {
           </p>
         </div>
 
-        <QuizControls
-          hasSnapshot={Boolean(snapshot)}
-          error={error}
-          isScanning={isScanning}
-          isGenerating={isGenerating}
-          onScanPage={scanPage}
-          onGenerateQuestions={generateQuestions}
-        />
+        <QuizControls error={error} isScanning={isScanning} onScanPage={scanPage} />
 
         {snapshot ? <PageSummary snapshot={snapshot} /> : null}
 
-        <QuestionList questions={questions} />
       </div>
     </AppLayout>
   )

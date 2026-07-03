@@ -16,6 +16,12 @@ export type PageSnapshot = {
   media: PageMedia[]
 }
 
+export type ScanHistoryItem = PageSnapshot & {
+  id: number
+  created_at: string
+  updated_at: string
+}
+
 export type QuizChoice = {
   id: string
   text: string

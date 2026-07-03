@@ -252,3 +252,59 @@ def test_html_file_to_markdown(monkeypatch) -> None:
     assert response.headers["content-type"].startswith("text/markdown")
     assert response.headers["content-disposition"] == 'attachment; filename="hello.md"'
     assert response.text == "# Hello"
+
+
+def test_scan_history_crud(monkeypatch, tmp_path) -> None:
+    db_path = tmp_path / "scan_history.sqlite3"
+    monkeypatch.setattr("app.main.SCAN_HISTORY_DB_PATH", str(db_path))
+
+    create_response = client.post(
+        "/scan-history",
+        json={
+            "title": "Example",
+            "url": "https://example.com",
+            "html": "<h1>Example</h1>",
+            "markdown": "# Example",
+            "media": [{"kind": "image", "src": "https://example.com/image.png"}],
+        },
+    )
+
+    assert create_response.status_code == 200
+    created = create_response.json()
+    assert created["id"] == 1
+    assert created["title"] == "Example"
+    assert created["url"] == "https://example.com"
+    assert created["html"] == "<h1>Example</h1>"
+    assert created["markdown"] == "# Example"
+    assert created["media"] == [{"kind": "image", "src": "https://example.com/image.png"}]
+    assert created["created_at"]
+    assert created["updated_at"]
+
+    list_response = client.get("/scan-history")
+
+    assert list_response.status_code == 200
+    assert list_response.json() == [created]
+
+    get_response = client.get("/scan-history/1")
+
+    assert get_response.status_code == 200
+    assert get_response.json() == created
+
+    update_response = client.put(
+        "/scan-history/1",
+        json={"title": "Updated", "markdown": "# Updated", "media": []},
+    )
+
+    assert update_response.status_code == 200
+    updated = update_response.json()
+    assert updated["id"] == 1
+    assert updated["title"] == "Updated"
+    assert updated["url"] == "https://example.com"
+    assert updated["markdown"] == "# Updated"
+    assert updated["media"] == []
+
+    delete_response = client.delete("/scan-history/1")
+
+    assert delete_response.status_code == 200
+    assert delete_response.json() == {"ok": True}
+    assert client.get("/scan-history/1").status_code == 404
