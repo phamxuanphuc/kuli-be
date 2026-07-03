@@ -2,7 +2,7 @@ VENV := .venv-app
 PY := $(VENV)/bin/python
 PIP := $(VENV)/bin/pip
 
-.PHONY: setup server-bin build dev dev-ext build-ext clean
+.PHONY: setup server-bin build dmg dev dev-ext build-ext clean
 
 setup:
 	python3 -m venv $(VENV)
@@ -17,6 +17,9 @@ server-bin:
 
 build: server-bin
 	./macapp/build.sh
+
+# Rebuild extensions with latest code, then package the .app + .dmg
+dmg: build-ext build
 
 dev:
 	./macapp/dev.sh

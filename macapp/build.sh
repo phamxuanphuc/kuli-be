@@ -11,8 +11,13 @@ if [ ! -d "$BIN" ]; then
   exit 1
 fi
 
+if [ ! -d "dist/extensions" ]; then
+  echo "Build the extensions first (pnpm build in extensions/), output must be at dist/extensions"
+  exit 1
+fi
+
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/server"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/server" "$APP/Contents/Resources/dist"
 
 # Compile SwiftUI native binary
 swiftc -O -parse-as-library -o "$APP/Contents/MacOS/Kuli" macapp/KuliApp.swift \
@@ -20,6 +25,12 @@ swiftc -O -parse-as-library -o "$APP/Contents/MacOS/Kuli" macapp/KuliApp.swift \
 
 # Bundle the PyInstaller server dir into Resources/server
 cp -R "$BIN/." "$APP/Contents/Resources/server/"
+
+# Bundle the built extensions into Resources/dist/extensions (for the Install button)
+cp -R "dist/extensions" "$APP/Contents/Resources/dist/extensions"
+
+# App icon
+cp macapp/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -33,6 +44,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>CFBundleShortVersionString</key><string>1.0</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleExecutable</key><string>Kuli</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>NSHighResolutionCapable</key><true/>
 </dict>
@@ -43,3 +55,14 @@ PLIST
 codesign --force --deep --sign - "$APP" 2>/dev/null || true
 
 echo "Built $APP"
+
+# Package into a distributable DMG (drag-to-Applications layout)
+DMG="dist/Kuli.dmg"
+STAGE="$(mktemp -d)"
+cp -R "$APP" "$STAGE/"
+ln -s /Applications "$STAGE/Applications"
+rm -f "$DMG"
+hdiutil create -volname "Kuli" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
+rm -rf "$STAGE"
+
+echo "Built $DMG"

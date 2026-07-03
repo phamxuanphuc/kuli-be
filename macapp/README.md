@@ -16,11 +16,19 @@ python3 -m venv .venv-app
   --exclude-module tkinter --exclude-module matplotlib \
   server_entry.py
 
-# 3. Build the .app
+# 3. Build the extensions (once, output must land at dist/extensions)
+cd extensions && pnpm install && pnpm build && cd ..
+
+# 4. Build the .app and the distributable .dmg
 ./macapp/build.sh
 ```
 
-Output: `dist/Kuli.app` (~113 MB).
+Output: `dist/Kuli.app` (~113 MB) and `dist/Kuli.dmg` (~47 MB).
+The bundled extensions ship inside the app (`Contents/Resources/dist/extensions`) so the in-app **Install extension** button works on other Macs.
+
+## Install on another Mac
+
+Copy `dist/Kuli.dmg`, open it, drag **Kuli** to **Applications**, then right-click the app → **Open** the first time (ad-hoc signed).
 
 ## Dev
 

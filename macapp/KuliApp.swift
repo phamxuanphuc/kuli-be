@@ -87,6 +87,46 @@ final class ServerController: ObservableObject {
 struct ContentView: View {
     @StateObject private var server = ServerController()
     @AppStorage("port") private var portText = "8000"
+    @State private var installStatus = ""
+
+    private func installExtension() {
+        let fm = FileManager.default
+
+        // Built extension files: bundled resource, or dev fallback to repo dist/extensions
+        let src: URL
+        if let bundled = Bundle.main.url(forResource: "extensions", withExtension: nil, subdirectory: "dist") {
+            src = bundled
+        } else {
+            let dev = URL(fileURLWithPath: "dist/extensions")
+            guard fm.fileExists(atPath: dev.path) else {
+                installStatus = "Error: built extensions not found (build first)"
+                return
+            }
+            src = dev
+        }
+
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Install Here"
+        panel.message = "Choose where to install the extension"
+        guard panel.runModal() == .OK, let chosen = panel.url else { return }
+        let destDir = chosen.appendingPathComponent("kuli-extensions", isDirectory: true)
+
+        do {
+            try fm.createDirectory(at: destDir, withIntermediateDirectories: true)
+            let names = try fm.contentsOfDirectory(atPath: src.path)
+            for name in names {
+                let target = destDir.appendingPathComponent(name)
+                if fm.fileExists(atPath: target.path) { try fm.removeItem(at: target) }
+                try fm.copyItem(at: src.appendingPathComponent(name), to: target)
+            }
+            installStatus = "Installed \(names.count) items to \(destDir.path)"
+        } catch {
+            installStatus = "Error: \(error.localizedDescription)"
+        }
+    }
 
     var body: some View {
         VStack(spacing: 14) {
@@ -116,6 +156,20 @@ struct ContentView: View {
                 .foregroundStyle(server.running ? .green : .secondary)
                 .textSelection(.enabled)
                 .multilineTextAlignment(.center)
+
+            Divider()
+
+            HStack {
+                Button("Install Extension…", action: installExtension)
+                if !installStatus.isEmpty {
+                    Text(installStatus)
+                        .font(.caption)
+                        .foregroundStyle(installStatus.hasPrefix("Error") ? .red : .secondary)
+                        .textSelection(.enabled)
+                        .lineLimit(2)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             Divider()
             Text("Logs").font(.headline).frame(maxWidth: .infinity, alignment: .leading)

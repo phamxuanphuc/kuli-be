@@ -8,4 +8,5 @@ import manifest from './src/manifest.js'
 export default defineConfig({
   base: './',
   plugins: [react(), tailwindcss(), crx({ manifest })],
+  build: { outDir: '../dist/extensions', emptyOutDir: true },
 })
