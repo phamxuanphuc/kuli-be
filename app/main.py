@@ -47,7 +47,7 @@ MEDIA_DOWNLOAD_TIMEOUT_SECONDS = float(os.getenv("MEDIA_DOWNLOAD_TIMEOUT_SECONDS
 TRANSCRIBE_MAX_WORKERS = int(os.getenv("TRANSCRIBE_MAX_WORKERS", "4"))
 TRANSCRIBE_EXECUTOR = os.getenv("TRANSCRIBE_EXECUTOR", "process").lower()
 FFMPEG_TIMEOUT_SECONDS = float(os.getenv("FFMPEG_TIMEOUT_SECONDS", "60"))
-SCAN_HISTORY_DB_PATH = os.getenv("SCAN_HISTORY_DB_PATH", "scan_history.sqlite3")
+SCAN_HISTORY_DB_PATH = os.getenv("SCAN_HISTORY_DB_PATH")
 
 
 class HtmlToMarkdownRequest(BaseModel):
@@ -211,9 +211,17 @@ def init_scan_history_db() -> None:
 def get_scan_history_connection(init: bool = True) -> sqlite3.Connection:
     if init:
         init_scan_history_db()
-    connection = sqlite3.connect(SCAN_HISTORY_DB_PATH)
+    db_path = get_scan_history_db_path()
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(db_path)
     connection.row_factory = sqlite3.Row
     return connection
+
+
+def get_scan_history_db_path() -> Path:
+    if SCAN_HISTORY_DB_PATH:
+        return Path(SCAN_HISTORY_DB_PATH).expanduser()
+    return Path.home() / "Library" / "Application Support" / "Kuli" / "scan_history.sqlite3"
 
 
 def get_scan_history_by_id(history_id: int) -> dict:

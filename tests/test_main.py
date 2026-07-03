@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from app.main import MEDIA_DOWNLOAD_MAX_BYTES, app
+from app.main import MEDIA_DOWNLOAD_MAX_BYTES, app, get_scan_history_connection, get_scan_history_db_path
 
 client = TestClient(app)
 
@@ -302,6 +302,24 @@ def test_html_file_to_markdown_updates_existing_scan_history(monkeypatch, tmp_pa
     assert history["html"] == "<h1>Hello</h1>"
     assert history["markdown"] == "# Hello"
     assert history["media"] == [{"kind": "image", "src": "https://example.com/image.png"}]
+
+
+def test_default_scan_history_db_path_uses_user_app_support(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr("app.main.SCAN_HISTORY_DB_PATH", None)
+    monkeypatch.setattr("app.main.Path.home", lambda: tmp_path)
+
+    assert get_scan_history_db_path() == tmp_path / "Library" / "Application Support" / "Kuli" / "scan_history.sqlite3"
+
+
+def test_scan_history_connection_creates_parent_directory(monkeypatch, tmp_path) -> None:
+    db_path = tmp_path / "nested" / "scan_history.sqlite3"
+    monkeypatch.setattr("app.main.SCAN_HISTORY_DB_PATH", str(db_path))
+
+    with get_scan_history_connection(init=False) as connection:
+        connection.execute("SELECT 1")
+
+    assert db_path.parent.exists()
+    assert db_path.exists()
 
 
 def test_scan_history_crud(monkeypatch, tmp_path) -> None:
