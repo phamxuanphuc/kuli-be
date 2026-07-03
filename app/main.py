@@ -256,9 +256,14 @@ def transcribe_media_url(url: str) -> str:
 
 def transcribe_media_file(wav_path: str) -> str:
     try:
-        from moonshine_voice.moonshine_api import ModelArch
-        from moonshine_voice.transcriber import Transcriber
-        from moonshine_voice.utils import get_model_path, load_wav_file
+        try:
+            from moonshine_voice.moonshine_api import ModelArch
+            from moonshine_voice.transcriber import Transcriber
+            from moonshine_voice.utils import get_model_path, load_wav_file
+        except ImportError as exc:
+            raise RuntimeError(
+                "Audio/video transcription unavailable in this build (moonshine-voice not bundled)."
+            ) from exc
 
         model_name = os.getenv("MOONSHINE_MODEL_NAME", "tiny-en")
         model_arch_name = os.getenv("MOONSHINE_MODEL_ARCH", "tiny").upper().replace("-", "_")

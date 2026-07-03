@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Quiz Practice Test Page</title>
+    <style>
+      :root {
+        color: #111;
+        background: #f7f7f2;
+        font-family: Inter, Helvetica, Arial, sans-serif;
+      }
+
+      body {
+        margin: 0;
+        padding: 32px;
+      }
+
+      main {
+        max-width: 880px;
+        margin: 0 auto;
+        background: #fff;
+        border: 2px solid #111;
+        box-shadow: 8px 8px 0 #111;
+        padding: 32px;
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: 44px;
+        line-height: 0.95;
+        letter-spacing: -0.06em;
+        text-transform: uppercase;
+      }
+
+      h2 {
+        margin-top: 32px;
+        padding-top: 20px;
+        border-top: 2px solid #111;
+        font-size: 24px;
+      }
+
+      .meta {
+        color: #555;
+        font-weight: 700;
+      }
+
+      .question {
+        border: 1px solid #111;
+        padding: 18px;
+        margin: 18px 0;
+      }
+
+      .question h3 {
+        margin: 0 0 12px;
+      }
+
+      ol {
+        display: grid;
+        gap: 8px;
+        margin: 0;
+      }
+
+      li {
+        line-height: 1.5;
+      }
+
+      .answer {
+        margin-top: 12px;
+        padding: 10px;
+        border-left: 4px solid #111;
+        background: #fafafa;
+        font-weight: 700;
+      }
+
+      figure {
+        margin: 20px 0;
+        border: 1px solid #111;
+        padding: 12px;
+      }
+
+      img {
+        max-width: 100%;
+        display: block;
+      }
+
+      figcaption {
+        margin-top: 8px;
+        font-size: 14px;
+        color: #555;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="meta">Published test content · Multiple-choice quiz source</p>
+      <h1>Web Fundamentals Quiz</h1>
+      <p>
+        This page contains ready-made multiple-choice questions about HTML, CSS, JavaScript, accessibility,
+        browser rendering, and web performance. Use it to test page scanning and quiz generation behavior.
+      </p>
+
+      <figure>
+        <svg width="820" height="220" viewBox="0 0 820 220" role="img" aria-label="Browser rendering pipeline diagram">
+          <rect width="820" height="220" fill="#f7f7f2" />
+          <rect x="30" y="70" width="120" height="60" fill="#fff" stroke="#111" stroke-width="3" />
+          <text x="90" y="105" text-anchor="middle" font-size="16" font-weight="700">HTML</text>
+          <rect x="190" y="70" width="120" height="60" fill="#fff" stroke="#111" stroke-width="3" />
+          <text x="250" y="105" text-anchor="middle" font-size="16" font-weight="700">DOM</text>
+          <rect x="350" y="70" width="120" height="60" fill="#fff" stroke="#111" stroke-width="3" />
+          <text x="410" y="105" text-anchor="middle" font-size="16" font-weight="700">CSSOM</text>
+          <rect x="510" y="70" width="120" height="60" fill="#fff" stroke="#111" stroke-width="3" />
+          <text x="570" y="105" text-anchor="middle" font-size="16" font-weight="700">Render Tree</text>
+          <rect x="670" y="70" width="120" height="60" fill="#fff" stroke="#111" stroke-width="3" />
+          <text x="730" y="105" text-anchor="middle" font-size="16" font-weight="700">Paint</text>
+          <path d="M150 100H190M310 100H350M470 100H510M630 100H670" stroke="#111" stroke-width="3" />
+        </svg>
+        <figcaption>Diagram: simplified browser rendering pipeline from document parsing to paint.</figcaption>
+      </figure>
+
+      <h2>Questions</h2>
+
+      <section class="question">
+        <h3>1. What does semantic HTML primarily improve?</h3>
+        <ol type="A">
+          <li>Only visual styling</li>
+          <li>Meaning, accessibility, and machine readability</li>
+          <li>Server memory allocation</li>
+          <li>Image compression quality</li>
+        </ol>
+        <p class="answer">Correct answer: B. Semantic elements communicate meaning to browsers, assistive technology, and search systems.</p>
+      </section>
+
+      <section class="question">
+        <h3>2. Which CSS property creates a grid layout?</h3>
+        <ol type="A">
+          <li>display: grid</li>
+          <li>position: grid</li>
+          <li>layout: grid</li>
+          <li>float: grid</li>
+        </ol>
+        <p class="answer">Correct answer: A. CSS Grid starts with display: grid on the container.</p>
+      </section>
+
+      <section class="question">
+        <h3>3. What is the purpose of alt text on an image?</h3>
+        <ol type="A">
+          <li>To make images load faster</li>
+          <li>To describe image content when the image cannot be seen</li>
+          <li>To convert images into SVG</li>
+          <li>To prevent layout shift automatically</li>
+        </ol>
+        <p class="answer">Correct answer: B. Alt text supports screen readers and fallback content.</p>
+      </section>
+
+      <section class="question">
+        <h3>4. Which JavaScript API is commonly used to request JSON data from a server?</h3>
+        <ol type="A">
+          <li>fetch()</li>
+          <li>querySelector()</li>
+          <li>setTimeout()</li>
+          <li>localStorage.clear()</li>
+        </ol>
+        <p class="answer">Correct answer: A. fetch() sends network requests and can parse JSON responses.</p>
+      </section>
+
+      <section class="question">
+        <h3>5. What does Cumulative Layout Shift measure?</h3>
+        <ol type="A">
+          <li>Unexpected visual movement during page load</li>
+          <li>Total JavaScript bundle size</li>
+          <li>Number of HTTP redirects</li>
+          <li>Database query duration</li>
+        </ol>
+        <p class="answer">Correct answer: A. CLS tracks layout instability that disrupts user experience.</p>
+      </section>
+
+      <section class="question">
+        <h3>6. In the rendering diagram above, what comes after the DOM and CSSOM are available?</h3>
+        <ol type="A">
+          <li>Render tree creation</li>
+          <li>DNS lookup</li>
+          <li>Password hashing</li>
+          <li>Git commit creation</li>
+        </ol>
+        <p class="answer">Correct answer: A. Browser combines DOM and CSSOM into a render tree before layout and paint.</p>
+      </section>
+    </main>
+  </body>
+</html>
