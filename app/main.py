@@ -557,8 +557,8 @@ def transcribe_media_file(wav_path: str, delete_after: bool = True) -> str:
                 "Audio/video transcription unavailable in this build (moonshine-voice not bundled)."
             ) from exc
 
-        model_name = os.getenv("MOONSHINE_MODEL_NAME", "tiny-en")
-        model_arch_name = os.getenv("MOONSHINE_MODEL_ARCH", "tiny").upper().replace("-", "_")
+        model_name = os.getenv("MOONSHINE_MODEL_NAME", "base-en")
+        model_arch_name = os.getenv("MOONSHINE_MODEL_ARCH", "base").upper().replace("-", "_")
         model_arch = getattr(ModelArch, model_arch_name)
         audio_data, sample_rate = load_wav_file(wav_path)
         duration_s = len(audio_data) / sample_rate if sample_rate else 0
