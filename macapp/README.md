@@ -9,12 +9,8 @@ SwiftUI app that runs the FastAPI HTML→Markdown server locally. UI has a port 
 python3 -m venv .venv-app
 .venv-app/bin/pip install -r requirements-app.txt
 
-# 2. Bundle the server into a standalone binary
-.venv-app/bin/pyinstaller --noconfirm --onedir --name kuli-server \
-  --collect-all markitdown --collect-all magika \
-  --exclude-module torch --exclude-module moonshine_voice \
-  --exclude-module tkinter --exclude-module matplotlib \
-  server_entry.py
+# 2. Bundle the server into a standalone binary, including base-en model assets
+make server-bin
 
 # 3. Build the extensions (once, output must land at dist/extensions)
 cd extensions && pnpm install && pnpm build && cd ..
@@ -54,4 +50,4 @@ Server-only dev (no UI):
 
 ## Notes
 
-- Audio/video transcription is disabled in this build (moonshine-voice excluded to keep it light). HTML/document conversion works.
+- Audio/video transcription uses `moonshine-voice`; `make server-bin` downloads and bundles the default `base-en` model assets.

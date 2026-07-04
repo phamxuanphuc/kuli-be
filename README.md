@@ -54,7 +54,7 @@ curl -X POST http://127.0.0.1:8000/file-to-markdown \
   -o meeting.md
 ```
 
-Luu y: transcription audio/video dung `moonshine-voice` va can co `ffmpeg` tren may chay server de tach/chuan hoa audio tu video, MP3, MP4, M4A. Mac dinh service dung model `base-en`; co the doi bang bien moi truong `MOONSHINE_MODEL_NAME` va `MOONSHINE_MODEL_ARCH` neu server da co model tuong ung. Media URL trong HTML chi ho tro `http/https`, gioi han tai mac dinh 150MB (`MEDIA_DOWNLOAD_MAX_BYTES`) va timeout mac dinh 60 giay (`MEDIA_DOWNLOAD_TIMEOUT_SECONDS`). Service dung CA bundle tu `certifi` khi tai media URL HTTPS de tranh loi SSL local thieu certificate.
+Luu y: transcription audio/video dung `moonshine-voice` va can co `ffmpeg` tren may chay server de tach/chuan hoa audio tu video, MP3, MP4, M4A. Mac dinh service dung model `base-en`; lenh build app se tai model nay vao package `moonshine-voice` truoc khi bundle bang PyInstaller. Co the doi bang bien moi truong `MOONSHINE_MODEL_NAME` va `MOONSHINE_MODEL_ARCH` neu server da co model tuong ung. Media URL trong HTML chi ho tro `http/https`, gioi han tai mac dinh 150MB (`MEDIA_DOWNLOAD_MAX_BYTES`) va timeout mac dinh 60 giay (`MEDIA_DOWNLOAD_TIMEOUT_SECONDS`). Service dung CA bundle tu `certifi` khi tai media URL HTTPS de tranh loi SSL local thieu certificate.
 
 ## Deploy len Vercel
 

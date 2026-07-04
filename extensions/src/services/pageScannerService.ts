@@ -1,8 +1,24 @@
 import { getKuliBeBaseUrl } from '../lib/config'
 import { createScanHistory } from './scanHistoryService'
-import type { PageSnapshot } from '../types'
+import type { PageSnapshot, ScanHistoryItem } from '../types'
 
 const noReceivingEndMessage = 'Receiving end does not exist'
+
+async function waitForTranscribeComplete(historyId: number): Promise<ScanHistoryItem> {
+  return new Promise((resolve, reject) => {
+    const events = new EventSource(`${getKuliBeBaseUrl()}/scan-history/${historyId}/events`)
+
+    events.addEventListener('transcribe_complete', (event) => {
+      events.close()
+      resolve(JSON.parse(event.data) as ScanHistoryItem)
+    })
+
+    events.onerror = () => {
+      events.close()
+      reject(new Error('Could not receive transcribe completion event.'))
+    }
+  })
+}
 
 async function convertHtmlToMarkdown(snapshot: PageSnapshot, historyId: number): Promise<string> {
   const formData = new FormData()
@@ -111,7 +127,8 @@ export async function getActiveTabSnapshot(): Promise<PageSnapshot> {
     media: [],
   })
   const snapshot = await requestTabScan(tab.id)
-  const markdown = await convertHtmlToMarkdown(snapshot, pendingHistory.id)
+  const fastMarkdown = await convertHtmlToMarkdown(snapshot, pendingHistory.id)
+  const completedHistory = await waitForTranscribeComplete(pendingHistory.id)
 
-  return { ...snapshot, markdown }
+  return { ...snapshot, markdown: completedHistory.markdown || fastMarkdown }
 }

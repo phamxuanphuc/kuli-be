@@ -10,6 +10,7 @@ setup:
 
 server-bin: setup
 	MOONSHINE_DIR="$$($(PY) -c 'import moonshine_voice, pathlib; print(pathlib.Path(moonshine_voice.__file__).parent)')"; \
+	MOONSHINE_DIR="$$MOONSHINE_DIR" $(PY) -c 'import os; from pathlib import Path; from moonshine_voice.download import find_model_info, get_components_for_model_info; from moonshine_voice.download_file import download_model; from moonshine_voice.moonshine_api import ModelArch; info = find_model_info("en", ModelArch.BASE); dest = Path(os.environ["MOONSHINE_DIR"]) / "assets" / "base-en"; [download_model(info["download_url"] + "/" + component, str(dest / component)) for component in get_components_for_model_info(info)]'; \
 	$(VENV)/bin/pyinstaller --noconfirm --onedir --name kuli-server \
 		--collect-all markitdown --collect-all magika \
 		--hidden-import moonshine_voice.moonshine_api \

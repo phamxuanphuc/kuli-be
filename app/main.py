@@ -2,6 +2,7 @@ import base64
 import json
 import logging
 import os
+import queue
 import time
 import re
 import shutil
@@ -11,6 +12,7 @@ import subprocess
 import tempfile
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from datetime import datetime, timezone
+from threading import Lock
 from html import escape
 from io import BytesIO
 from pathlib import Path
@@ -19,6 +21,7 @@ from urllib.request import Request as UrllibRequest, urlopen
 
 import certifi
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi.responses import StreamingResponse
 from markitdown import MarkItDown
 from pydantic import BaseModel, Field
 
@@ -48,6 +51,9 @@ TRANSCRIBE_MAX_WORKERS = int(os.getenv("TRANSCRIBE_MAX_WORKERS", "4"))
 TRANSCRIBE_EXECUTOR = os.getenv("TRANSCRIBE_EXECUTOR", "process").lower()
 FFMPEG_TIMEOUT_SECONDS = float(os.getenv("FFMPEG_TIMEOUT_SECONDS", "60"))
 SCAN_HISTORY_DB_PATH = os.getenv("SCAN_HISTORY_DB_PATH")
+SSE_SUBSCRIBERS: dict[int, list[queue.Queue[str]]] = {}
+SSE_LAST_EVENTS: dict[int, str] = {}
+SSE_SUBSCRIBERS_LOCK = Lock()
 
 
 class HtmlToMarkdownRequest(BaseModel):
@@ -148,6 +154,33 @@ def list_scan_history() -> list[dict]:
 @app.get("/scan-history/{history_id}")
 def get_scan_history(history_id: int) -> dict:
     return get_scan_history_by_id(history_id)
+
+
+@app.get("/scan-history/{history_id}/events")
+def scan_history_events(history_id: int) -> StreamingResponse:
+    get_scan_history_by_id(history_id)
+    events: queue.Queue[str] = queue.Queue()
+    with SSE_SUBSCRIBERS_LOCK:
+        last_event = SSE_LAST_EVENTS.get(history_id)
+        SSE_SUBSCRIBERS.setdefault(history_id, []).append(events)
+
+    def stream_events():
+        try:
+            yield "event: connected\ndata: {}\n\n"
+            if last_event is not None:
+                yield last_event
+                return
+            while True:
+                yield events.get()
+        finally:
+            with SSE_SUBSCRIBERS_LOCK:
+                subscribers = SSE_SUBSCRIBERS.get(history_id, [])
+                if events in subscribers:
+                    subscribers.remove(events)
+                if not subscribers:
+                    SSE_SUBSCRIBERS.pop(history_id, None)
+
+    return StreamingResponse(stream_events(), media_type="text/event-stream")
 
 
 @app.put("/scan-history/{history_id}")
@@ -252,7 +285,17 @@ def save_converted_html_to_scan_history(
 
 def update_scan_history_transcripts(history_id: int, html_content: bytes) -> None:
     markdown = convert_html_bytes_to_markdown(html_content)
-    update_scan_history(history_id, ScanHistoryUpdate(markdown=markdown))
+    history = update_scan_history(history_id, ScanHistoryUpdate(markdown=markdown))
+    publish_scan_history_event(history_id, "transcribe_complete", history)
+
+
+def publish_scan_history_event(history_id: int, event: str, payload: dict) -> None:
+    message = f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+    with SSE_SUBSCRIBERS_LOCK:
+        SSE_LAST_EVENTS[history_id] = message
+        subscribers = list(SSE_SUBSCRIBERS.get(history_id, []))
+    for subscriber in subscribers:
+        subscriber.put(message)
 
 
 def get_history_title(filename: str | None) -> str | None:
@@ -549,6 +592,7 @@ def transcribe_media_url(url: str) -> str:
 def transcribe_media_file(wav_path: str, delete_after: bool = True) -> str:
     try:
         try:
+            from moonshine_voice.download import get_model_for_language
             from moonshine_voice.moonshine_api import ModelArch
             from moonshine_voice.transcriber import Transcriber
             from moonshine_voice.utils import get_model_path, load_wav_file
@@ -560,6 +604,10 @@ def transcribe_media_file(wav_path: str, delete_after: bool = True) -> str:
         model_name = os.getenv("MOONSHINE_MODEL_NAME", "base-en")
         model_arch_name = os.getenv("MOONSHINE_MODEL_ARCH", "base").upper().replace("-", "_")
         model_arch = getattr(ModelArch, model_arch_name)
+        model_path = get_model_path(model_name)
+        if not model_path.exists() and model_name == "base-en":
+            logger.info("transcribe: bundled model %s missing, downloading", model_name)
+            model_path, model_arch = get_model_for_language("en", model_arch)
         audio_data, sample_rate = load_wav_file(wav_path)
         duration_s = len(audio_data) / sample_rate if sample_rate else 0
         logger.info(
@@ -570,7 +618,7 @@ def transcribe_media_file(wav_path: str, delete_after: bool = True) -> str:
             model_arch_name,
         )
         started = time.perf_counter()
-        with Transcriber(get_model_path(model_name), model_arch=model_arch) as transcriber:
+        with Transcriber(model_path, model_arch=model_arch) as transcriber:
             transcript = transcriber.transcribe_without_streaming(audio_data, sample_rate)
         text = "\n".join(line.text for line in transcript.lines if line.text).strip()
         logger.info(
